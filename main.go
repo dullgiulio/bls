@@ -96,10 +96,10 @@ func main() {
 		log.Fatal("cannot get backlight max value: ", err)
 	}
 	p := poller{
-		min:    75,  // backlight min N
+		min:    50,  // backlight min N
 		max:    max, // backlight max N
-		sens:   2,   // sensitivity %
-		ratio:  60,  // lux = 1%
+		sens:   4,   // sensitivity %
+		ratio:  50,  // lux = 1%
 		dryrun: false,
 		debug:  false,
 		wait:   2 * time.Second,
