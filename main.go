@@ -74,7 +74,7 @@ func (p *poller) poll() {
 			diff = -diff
 		}
 		if p.debug {
-			log.Printf("light = %d (%d%%), back-light = %d, set %d (diff %d, min %d)", inlight, inlightPercent, blight, nblight, diff, blMin)
+			log.Printf("light = %d (%d%%), back-light = %d, set %d (diff %d, min-diff %d)", inlight, inlightPercent, blight, nblight, diff, blMin)
 		}
 		// Set backlight if there is more than the minimum change thresold to adjust. Or if we are below min (level was never set.)
 		if diff >= blMin || blight < p.min {
@@ -99,7 +99,7 @@ func main() {
 		min:    20,  // backlight min N
 		max:    max, // backlight max N
 		sens:   4,   // sensitivity %
-		ratio:  40,  // lux = 1%
+		ratio:  10,  // lux = 1%
 		dryrun: false,
 		debug:  false,
 		wait:   2 * time.Second,
