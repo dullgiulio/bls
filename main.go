@@ -41,6 +41,7 @@ func sysfileWriteInt(name string, n int) error {
 }
 
 type poller struct {
+	probes   int
 	max, min int
 	sens     int
 	ratio    int
@@ -51,32 +52,42 @@ type poller struct {
 
 func (p *poller) poll() {
 	var (
+		warmedUp bool
 		inIndex  int
-		inlights [8]int
 	)
+	inlights := make([]int, p.probes)
 	granularity := 100
 	maxIn := p.ratio * granularity
 	for {
+		var inlight int
+		var err error
 		blight, err := sysfileReadInt(backlightCurrPath)
 		if err != nil {
 			log.Fatal("cannot get backlight value: ", err)
 		}
-		inlight, err := sysfileReadInt(illuminancePath)
-		if err != nil {
-			log.Fatal("cannot get ambient light value: ", err)
+		for {
+			inlight, err = sysfileReadInt(illuminancePath)
+			if err != nil {
+				log.Fatal("cannot get ambient light value: ", err)
+			}
+			inlights[inIndex] = inlight
+			inIndex = (inIndex + 1) % cap(inlights)
+			if inIndex == 0 && warmedUp == false {
+				warmedUp = true
+			}
+			if warmedUp == true {
+				break
+			}
 		}
-		inlights[inIndex] = inlight
-		inIndex = (inIndex + 1) % cap(inlights)
 		inlight = 0
 		n := 0
 		// Average light in the last cap(inlights) probes
 		for i := 0; i < cap(inlights); i++ {
-			if inlights[i] > 0 {
-				inlight += inlights[i]
-				n++
-			}
+			inlight += inlights[i]
 		}
-		inlight = inlight / n
+		if n > 0 {
+			inlight = inlight / n
+		}
 		inlightPercent := inlight * granularity / maxIn
 		if inlightPercent > granularity {
 			inlightPercent = granularity
@@ -101,6 +112,7 @@ func (p *poller) poll() {
 			} else {
 				log.Printf("change backlight to %d%%; illuminance = %d, backlight = %d (was %d)", inlightPercent, inlight, nblight, blight)
 			}
+			continue // When light was changed, probe again right away
 		}
 		time.Sleep(p.wait)
 	}
@@ -112,14 +124,16 @@ func main() {
 		log.Fatal("cannot get backlight max value: ", err)
 	}
 	p := poller{
-		min:    20,  // backlight min N
+		probes: 8,
+		min:    40,  // backlight min N
 		max:    max, // backlight max N
-		sens:   12,  // sensitivity %
-		ratio:  4,   // lux = 1%
+		sens:   26,  // sensitivity %
+		ratio:  18,  // lux = 1%
 		dryrun: false,
 		debug:  false,
 		wait:   2 * time.Second,
 	}
+	flag.IntVar(&p.probes, "probes", p.probes, "Number `N` of illuminance probes to average")
 	flag.IntVar(&p.min, "min", p.min, "Minimum value `N` for backlight")
 	flag.IntVar(&p.max, "max", p.max, "Maximum value `N` for backlight (autodetected)")
 	flag.IntVar(&p.sens, "sensitivity", p.sens, "Minimum amount `S` in percent of backlight change to perform")
