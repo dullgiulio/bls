@@ -50,8 +50,12 @@ type poller struct {
 }
 
 func (p *poller) poll() {
-	maxIn := p.ratio * 100
-	blMin := p.sens * p.max / 100
+	var (
+		inIndex  int
+		inlights [8]int
+	)
+	granularity := 100
+	maxIn := p.ratio * granularity
 	for {
 		blight, err := sysfileReadInt(backlightCurrPath)
 		if err != nil {
@@ -61,11 +65,23 @@ func (p *poller) poll() {
 		if err != nil {
 			log.Fatal("cannot get ambient light value: ", err)
 		}
-		inlightPercent := inlight * 100 / maxIn
-		if inlightPercent > 100 {
-			inlightPercent = 100
+		inlights[inIndex] = inlight
+		inIndex = (inIndex + 1) % cap(inlights)
+		inlight = 0
+		n := 0
+		// Average light in the last cap(inlights) probes
+		for i := 0; i < cap(inlights); i++ {
+			if inlights[i] > 0 {
+				inlight += inlights[i]
+				n++
+			}
 		}
-		nblight := inlightPercent*p.max/100 + p.min
+		inlight = inlight / n
+		inlightPercent := inlight * granularity / maxIn
+		if inlightPercent > granularity {
+			inlightPercent = granularity
+		}
+		nblight := inlightPercent*p.max/granularity + p.min
 		if nblight > p.max {
 			nblight = p.max
 		}
@@ -74,10 +90,10 @@ func (p *poller) poll() {
 			diff = -diff
 		}
 		if p.debug {
-			log.Printf("light = %d (%d%%), back-light = %d, set %d (diff %d, min-diff %d)", inlight, inlightPercent, blight, nblight, diff, blMin)
+			log.Printf("light = %d (%d%%), back-light = %d, set %d (diff %d, min-diff %d)", inlight, inlightPercent, blight, nblight, diff, p.sens)
 		}
 		// Set backlight if there is more than the minimum change thresold to adjust. Or if we are below min (level was never set.)
-		if diff >= blMin || blight < p.min {
+		if diff >= p.sens || blight < p.min {
 			if !p.dryrun {
 				if err := sysfileWriteInt(backlightCurrPath, nblight); err != nil {
 					log.Fatal("cannot set backlight: ", err)
@@ -98,8 +114,8 @@ func main() {
 	p := poller{
 		min:    20,  // backlight min N
 		max:    max, // backlight max N
-		sens:   4,   // sensitivity %
-		ratio:  10,  // lux = 1%
+		sens:   12,  // sensitivity %
+		ratio:  4,   // lux = 1%
 		dryrun: false,
 		debug:  false,
 		wait:   2 * time.Second,
