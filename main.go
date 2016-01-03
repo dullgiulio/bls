@@ -43,11 +43,13 @@ func sysfileWriteInt(name string, n int) error {
 type poller struct {
 	probes   int
 	max, min int
+	grad     int
 	sens     int
 	ratio    int
 	dryrun   bool
 	debug    bool
 	wait     time.Duration
+	gradWait time.Duration
 }
 
 func (p *poller) poll() {
@@ -106,7 +108,7 @@ func (p *poller) poll() {
 		// Set backlight if there is more than the minimum change thresold to adjust. Or if we are below min (level was never set.)
 		if diff >= p.sens || blight < p.min {
 			if !p.dryrun {
-				if err := sysfileWriteInt(backlightCurrPath, nblight); err != nil {
+				if err := p.setBlight(blight, nblight); err != nil {
 					log.Fatal("cannot set backlight: ", err)
 				}
 			} else {
@@ -118,21 +120,54 @@ func (p *poller) poll() {
 	}
 }
 
+// Make a simple transition between backlight levels
+func (p *poller) setBlight(curr, set int) error {
+	// Decrease
+	if curr > set {
+		for curr > set {
+			curr -= p.grad
+			if curr < set {
+				curr = set
+			}
+			if err := sysfileWriteInt(backlightCurrPath, curr); err != nil {
+				return err
+			}
+			time.Sleep(p.gradWait)
+		}
+		return nil
+	}
+	// Increase
+	for curr < set {
+		curr += p.grad
+		if curr > set {
+			curr = set
+		}
+		if err := sysfileWriteInt(backlightCurrPath, curr); err != nil {
+			return err
+		}
+		time.Sleep(p.gradWait)
+	}
+	return nil
+}
+
 func main() {
 	max, err := sysfileReadInt(backlightMaxPath)
 	if err != nil {
 		log.Fatal("cannot get backlight max value: ", err)
 	}
 	p := poller{
-		probes: 8,
-		min:    40,  // backlight min N
-		max:    max, // backlight max N
-		sens:   26,  // sensitivity %
-		ratio:  18,  // lux = 1%
-		dryrun: false,
-		debug:  false,
-		wait:   2 * time.Second,
+		probes:   8,
+		grad:     5,   // how much to change backlight for gradual change
+		min:      40,  // backlight min N
+		max:      max, // backlight max N
+		sens:     18,  // sensitivity %
+		ratio:    20,  // lux = 1%
+		dryrun:   false,
+		debug:    false,
+		wait:     2 * time.Second,
+		gradWait: 200 * time.Millisecond,
 	}
+	flag.IntVar(&p.grad, "animation-steps", p.grad, "Number `N` of backlight to add or remove to smoothly change backlight")
 	flag.IntVar(&p.probes, "probes", p.probes, "Number `N` of illuminance probes to average")
 	flag.IntVar(&p.min, "min", p.min, "Minimum value `N` for backlight")
 	flag.IntVar(&p.max, "max", p.max, "Maximum value `N` for backlight (autodetected)")
@@ -141,6 +176,7 @@ func main() {
 	flag.BoolVar(&p.dryrun, "dryrun", p.dryrun, "Do not set backlight, only print what would happen")
 	flag.BoolVar(&p.debug, "debug", p.debug, "Print values read from sensors every wait duration")
 	flag.DurationVar(&p.wait, "wait", p.wait, "Duration `T` between checks for changed light conditions")
+	flag.DurationVar(&p.gradWait, "animation", p.gradWait, "Duration `T` for smooth animation on light change")
 	flag.Parse()
 	p.poll()
 }
