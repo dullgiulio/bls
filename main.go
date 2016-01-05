@@ -10,10 +10,15 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 )
+
+func init() {
+	runtime.GOMAXPROCS(1)
+}
 
 const (
 	illuminancePath   = "/sys/bus/iio/devices/iio:device0/in_illuminance_raw"
@@ -164,7 +169,7 @@ func main() {
 		ratio:    20,  // lux = 1%
 		dryrun:   false,
 		debug:    false,
-		wait:     2 * time.Second,
+		wait:     4 * time.Second,
 		gradWait: 200 * time.Millisecond,
 	}
 	flag.IntVar(&p.grad, "animation-steps", p.grad, "Number `N` of backlight to add or remove to smoothly change backlight")
